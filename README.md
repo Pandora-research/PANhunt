@@ -14,6 +14,10 @@ panhunt.py requires:
 	- Python 2.7
 	- Colorama (https://pypi.python.org/pypi/colorama)
 	- Progressbar (https://pypi.python.org/pypi/progressbar)
+	- Python-docx (https://pypi.python.org/pypi/python-docx)
+	- docx2txt (https://pypi.python.org/pypi/docx2txt)
+	- Pdfminer (https://pypi.python.org/pypi/pdfminer)
+	- Pdfquery (https://pypi.python.org/pypi/pdfquery)
 	- PyInstaller (https://pypi.python.org/pypi/PyInstaller)
 
 To create panhunt.exe as a standalone executable with an icon run:
@@ -33,9 +37,9 @@ optional arguments:
   -h, --help       show this help message and exit
   -s SEARCH        base directory to search in (default: C:\)
   -x EXCLUDE       directories to exclude from the search (default: C:\Windows,C:\Program Files,C:\Program Files (x86))
-  -t TEXTFILES     text file extensions to search (default: .doc,.xls,.xml,.txt,.csv)
+  -t TEXTFILES     text file extensions to search (default: .doc,.xls,.xml,.txt,.csv,.log,.tmp,.bak,.rtf,.csv,.htm,.html)
   -z ZIPFILES      zip file extensions to search (default: .docx,.xlsx,.zip)
-  -e SPECIALFILES  special file extensions to search (default: .msg)
+  -e SPECIALFILES  special file extensions to search (default: .msg,.pdf)
   -m MAILFILES     email file extensions to search (default: .pst)
   -l OTHERFILES    other file extensions to list (default: .ost,.accdb,.mdb)
   -o OUTFILE       output file name for PAN report (default: panhunt_YYYY-MM-DD-HHMMSS.txt)
