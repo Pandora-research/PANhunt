@@ -11,6 +11,9 @@ import colorama
 import progressbar
 import pst # MS-PST files
 import msmsg # MS-MSG files
+from docx import Document
+import docx2txt
+import pdfquery
 
 TEXT_FILE_SIZE_LIMIT = 1073741824 # 1Gb
 
@@ -76,12 +79,15 @@ class AFile:
         self.errors.append(error_msg)
         print colorama.Fore.RED + unicode2ascii(u'ERROR %s on %s' % (error_msg, self.path)) + colorama.Fore.WHITE
 
-
     def check_regexs(self, regexs, search_extensions):
         """Checks the file for matching regular expressions: if a ZIP then each file in the ZIP (recursively) or the text in a document"""
 
         if self.type == 'ZIP':
             try:
+                if get_ext(self.path) == '.docx':
+                    doctext = docx2txt.process(self.path)
+                    self.check_text_regexs(doctext, regexs, '')
+                    
                 if zipfile.is_zipfile(self.path):
                     zf = zipfile.ZipFile(self.path)
                     self.check_zip_regexs(zf, regexs, search_extensions, '')                                             
@@ -116,9 +122,12 @@ class AFile:
                     self.set_error(sys.exc_info()[1])
                 except:
                     self.set_error(sys.exc_info()[1])
-
+            if get_ext(self.path) == '.pdf':
+                pdf = pdfquery.PDFQuery(self.path)
+                pdf.load()
+                self.check_pdf_regexs(pdf, regexs, '')
+                
         return self.matches
-
 
     def check_pst_regexs(self, regexs, search_extensions, hunt_type, gauge_update_function=None):
         """ Searches a pst file for regular expressions in messages and attachments using regular expressions"""
@@ -191,7 +200,6 @@ class AFile:
                     memory_zip.close()
                 except: #RuntimeError: # e.g. zip needs password
                     self.set_error(sys.exc_info()[1])
-
 
     def check_msg_regexs(self, msg, regexs, search_extensions, sub_path):
 
