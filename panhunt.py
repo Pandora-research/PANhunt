@@ -16,7 +16,7 @@ app_version = '1.1'
 # defaults
 search_dir = u'C:\\'
 output_file = u'panhunt_%s.txt' % time.strftime("%Y-%m-%d-%H%M%S")
-excluded_directories_string = u'C:\\Windows,C:\\Program Files,C:\\Program Files (x86)'
+excluded_directories_string = u'C:\\Windows,C:\\Program Files,C:\\Program Files (x86),C:\\ProgramData'
 text_extensions_string =  u'.doc,.xls,.xml,.txt,.csv,.log,.tmp,.bak,.rtf,.csv,.htm,.html'
 zip_extensions_string = u'.docx,.xlsx,.zip'
 special_extensions_string = u'.msg,.pdf'
