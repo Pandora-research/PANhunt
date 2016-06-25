@@ -17,19 +17,18 @@ app_version = '1.1'
 search_dir = u'C:\\'
 output_file = u'panhunt_%s.txt' % time.strftime("%Y-%m-%d-%H%M%S")
 excluded_directories_string = u'C:\\Windows,C:\\Program Files,C:\\Program Files (x86)'
-text_extensions_string =  u'.doc,.xls,.xml,.txt,.csv,.log'
+text_extensions_string =  u'.doc,.xls,.xml,.txt,.csv,.log,.tmp,.bak,.rtf,.csv,.htm,.html'
 zip_extensions_string = u'.docx,.xlsx,.zip'
-special_extensions_string = u'.msg'
+special_extensions_string = u'.msg,.pdf'
 mail_extensions_string = u'.pst'
 other_extensions_string = u'.ost,.accdb,.mdb' # checks for existence of files that can't be checked automatically
 
 excluded_directories = None
 search_extensions = {}
 
-pan_regexs = {'Mastercard': re.compile('(?:\D|^)(5[1-5][0-9]{2}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4})(?:\D|$)'), \
-                'Visa': re.compile('(?:\D|^)(4[0-9]{3}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4})(?:\D|$)'), \
-                'AMEX': re.compile('(?:\D|^)((?:34|37)[0-9]{2}(?:\ |\-|)[0-9]{6}(?:\ |\-|)[0-9]{5})(?:\D|$)')}
-
+pan_regexs = {'Mastercard': re.compile(ur'(?:\D|^)(5[1-5][0-9]{2}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4})(?:\D|$)'), \
+                'Visa': re.compile(ur'(?:\D|^)(4[0-9]{3}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4})(?:\D|$)'), \
+                'AMEX': re.compile(ur'(?:\D|^)((?:34|37)[0-9]{2}(?:\ |\-|)[0-9]{6}(?:\ |\-|)[0-9]{5})(?:\D|$)')}
 
 ###################################################################################################################################
 #   ____ _                         
@@ -54,12 +53,23 @@ class PANFile(filehunt.AFile):
         """Uses regular expressions to check for PANs in text"""
 
         for brand, regex in regexs.items():
+            try:
+                text.decode('ascii')
+            except:
+                text = re.sub(r"\x00+", "", text, flags=re.UNICODE)
             pans = regex.findall(text)
             if pans:
                 for pan in pans:
                     if PAN.is_valid_luhn_checksum(pan):
                         self.matches.append(PAN(self.path, sub_path, brand, pan))
 
+    def check_pdf_regexs(self, text, regexs, sub_path):
+        """Uses regular expressions to check for PANs in PDF files"""
+
+        for brand, regex in regexs.items():
+            pdftext = text.tree.xpath("//*[re:test(text(), '"+str(regex.pattern)+"')]", namespaces={"re": "http://exslt.org/regular-expressions"})
+            for match in pdftext:
+                self.check_text_regexs(match.text, regexs, '')
 
 class PAN:
     """PAN: A class for recording PANs, their brand and where they were found"""
@@ -79,7 +89,7 @@ class PAN:
 
 
     def get_masked_pan(self):
-        return re.sub('\d','*',self.pan[:-4]) + self.pan[-4:]
+        return self.pan[0:7] + re.sub('\d','*',self.pan[7:-4]) + self.pan[-4:]
 
 
     @staticmethod
@@ -100,7 +110,7 @@ class PAN:
             checksum += sum(digits_of(d*2))
         
         return checksum % 10 == 0
-        
+
 
 
 ###################################################################################################################################
