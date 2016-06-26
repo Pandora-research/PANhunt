@@ -10,18 +10,19 @@ import os, sys, zipfile, re, datetime, cStringIO, argparse, time, hashlib, unico
 import colorama
 import progressbar
 import filehunt
+import pyodbc
 
 app_version = '1.1'
 
 # defaults
 search_dir = u'C:\\'
-output_file = u'panhunt_%s.txt' % time.strftime("%Y-%m-%d-%H%M%S")
+output_file = u'panhunt_%s.csv' % time.strftime("%Y-%m-%d-%H%M%S")
 excluded_directories_string = u'C:\\Windows,C:\\Program Files,C:\\Program Files (x86),C:\\ProgramData'
 text_extensions_string =  u'.doc,.xls,.xml,.txt,.csv,.log,.tmp,.bak,.rtf,.htm,.html'
 zip_extensions_string = u'.docx,.xlsx,.zip'
-special_extensions_string = u'.msg,.pdf'
+special_extensions_string = u'.msg,.pdf,.mdb'
 mail_extensions_string = u'.pst'
-other_extensions_string = u'.ost,.accdb,.mdb' # checks for existence of files that can't be checked automatically
+other_extensions_string = u'.ost,.accdb' # checks for existence of files that can't be checked automatically
 
 excluded_directories = None
 search_extensions = {}
@@ -70,6 +71,41 @@ class PANFile(filehunt.AFile):
             pdftext = text.tree.xpath("//*[re:test(text(), '"+str(regex.pattern)+"')]", namespaces={"re": "http://exslt.org/regular-expressions"})
             for match in pdftext:
                 self.check_text_regexs(match.text, regexs, '')
+
+    def check_access_regexs(self, dbfile, dbtype, regexs):
+        """Uses regular expressions to check for PANs in Access MDB files"""
+
+        # Try to connect to the database
+        try:
+            conn = pyodbc.connect('DRIVER={Microsoft Access Driver (*.mdb)};DBQ='+dbfile)
+            cursor = conn.cursor()
+
+            # Loop through each table
+            for table_name in cursor.tables(tableType='TABLE'):
+                SQL = 'SELECT * FROM '+str(table_name[2])+';'
+                tableCursor = conn.cursor()
+                rowcount = 0
+
+                # Loop through each row in the table
+                for row in tableCursor.execute(SQL):
+                    rowdata = ''
+                    rowlen = len(row)
+                    tblcount = 0
+
+                    # Concatenate table contents
+                    while(tblcount < rowlen):
+                        if (tblcount+1) == rowlen:
+                            rowdata += str(row[tblcount])
+                        else:
+                            rowdata += str(row[tblcount]) + ','
+
+                        tblcount += 1
+    
+                    self.check_text_regexs(rowdata, regexs, str('Table: '+table_name[2])+' => Row: '+str(rowcount+1))
+                    rowcount += 1
+        except:
+            pass
+
 
 class PAN:
     """PAN: A class for recording PANs, their brand and where they were found"""
@@ -157,24 +193,34 @@ def check_file_hash(text_file):
 def output_report(search_dir, excluded_directories_string, all_files, total_files_searched, pans_found, output_file, mask_pans):
 
     pan_sep = u'\n\t'
-    pan_report = u'PAN Hunt Report - %s\n%s\n' % (time.strftime("%H:%M:%S %d/%m/%Y"), '='*100)
-    pan_report += u'Searched %s\nExcluded %s\n' % (search_dir, excluded_directories_string)
-    pan_report += u'Command: %s\n' % (' '.join(sys.argv))
-    pan_report += u'Uname: %s\n' % (' | '.join(platform.uname()))
-    pan_report += u'Searched %s files. Found %s possible PANs.\n%s\n\n' % (total_files_searched, pans_found, '='*100)
-    
+    pan_report = u'Path,File,File Size,File Modified Date,Details,Type,PAN\n'
+
     for afile in sorted([afile for afile in all_files if afile.matches]):
+        total_matches = len(afile.matches)
+        match_count = 0
+
+        while(match_count < total_matches):
+            pan_report += u'%s,%s,%s,%s,%s,%s,%s' % (afile.path.rsplit('\\', 1)[0], afile.path.rsplit('\\', 1)[1], afile.size_friendly(), afile.modified.strftime('%m/%d/%Y'), str(afile.matches[match_count]).rsplit('Visa', 1)[0].rsplit('Master', 1)[0].rsplit('AMEX', 1)[0], str(afile.matches[match_count]).rsplit(':', 1)[0].rsplit(' ', 1)[1], str(afile.matches[match_count]).rsplit(':', 1)[1])
+            pan_report += '\n'
+            match_count += 1
+
         pan_header = u'FOUND PANs: %s (%s %s)' % (afile.path, afile.size_friendly(), afile.modified.strftime('%d/%m/%Y'))
         print colorama.Fore.RED + filehunt.unicode2ascii(pan_header)
-        pan_report += pan_header + '\n'
         pan_list = u'\t' + pan_sep.join([pan.__repr__(mask_pans) for pan in afile.matches])
         print colorama.Fore.YELLOW + filehunt.unicode2ascii(pan_list)
-        pan_report += pan_list + '\n\n'
     
     if len([afile for afile in all_files if afile.type == 'OTHER']) <> 0:
         pan_report += u'Interesting Files to check separately:\n'
     for afile in sorted([afile for afile in all_files if afile.type == 'OTHER']):
         pan_report += u'%s (%s %s)\n' % (afile.path, afile.size_friendly(), afile.modified.strftime('%d/%m/%Y'))
+
+    pan_report += u'\n\t'
+    pan_report += u'PAN Hunt Report - %s\n%s\n' % (time.strftime("%H:%M:%S %d/%m/%Y"), '='*100)
+    pan_report += u'Searched %s\nExcluded %s\n' % (search_dir, excluded_directories_string)
+    pan_report += u'Command: %s\n' % (' '.join(sys.argv))
+    pan_report += u'Uname: %s\n' % (' | '.join(platform.uname()))
+    pan_report += u'Searched %s files. Found %s possible PANs.\n%s\n\n' % (total_files_searched, pans_found, '='*100)
+    pan_report += u'\n\t'
 
     pan_report = pan_report.replace('\n', os.linesep)
 

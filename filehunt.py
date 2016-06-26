@@ -126,6 +126,8 @@ class AFile:
                 pdf = pdfquery.PDFQuery(self.path)
                 pdf.load()
                 self.check_pdf_regexs(pdf, regexs, '')
+            if get_ext(self.path) == '.mdb':
+                self.check_access_regexs(self.path, 'mdb', regexs)
                 
         return self.matches
 

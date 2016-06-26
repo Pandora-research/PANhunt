@@ -18,6 +18,7 @@ panhunt.py requires:
 	- docx2txt (https://pypi.python.org/pypi/docx2txt)
 	- Pdfminer (https://pypi.python.org/pypi/pdfminer)
 	- Pdfquery (https://pypi.python.org/pypi/pdfquery)
+	- PyODBC (http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyodbc)
 	- PyInstaller (https://pypi.python.org/pypi/PyInstaller)
 
 To create panhunt.exe as a standalone executable with an icon run:
