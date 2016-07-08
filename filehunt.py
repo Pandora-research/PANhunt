@@ -123,11 +123,17 @@ class AFile:
                 except:
                     self.set_error(sys.exc_info()[1])
             if get_ext(self.path) == '.pdf':
-                pdf = pdfquery.PDFQuery(self.path)
-                pdf.load()
-                self.check_pdf_regexs(pdf, regexs, '')
+                try:
+                    pdf = pdfquery.PDFQuery(self.path)
+                    pdf.load()
+                    self.check_pdf_regexs(pdf, regexs, '')
+                except:
+                    self.set_error(sys.exc_info()[1])
             if get_ext(self.path) == '.mdb':
-                self.check_access_regexs(self.path, 'mdb', regexs)
+                try:
+                    self.check_access_regexs(self.path, 'mdb', regexs)
+                except:
+                    self.set_error(sys.exc_info()[1])
                 
         return self.matches
 
