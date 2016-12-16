@@ -11,6 +11,7 @@ import colorama
 import progressbar
 import filehunt
 import pyodbc
+import cssselect
 
 app_version = '1.1'
 
@@ -26,6 +27,7 @@ other_extensions_string = u'.ost,.accdb' # checks for existence of files that ca
 
 excluded_directories = None
 search_extensions = {}
+enable_pdf = False
 
 pan_regexs = {'Mastercard': re.compile(ur'(?:\D|^)(5[1-5][0-9]{2}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4})(?:\D|$)'), \
                 'Visa': re.compile(ur'(?:\D|^)(4[0-9]{3}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4}(?:\ |\-|)[0-9]{4})(?:\D|$)'), \
@@ -68,9 +70,12 @@ class PANFile(filehunt.AFile):
         """Uses regular expressions to check for PANs in PDF files"""
 
         for brand, regex in regexs.items():
-            pdftext = text.tree.xpath("//*[re:test(text(), '"+str(regex.pattern)+"')]", namespaces={"re": "http://exslt.org/regular-expressions"})
-            for match in pdftext:
-                self.check_text_regexs(match.text, regexs, '')
+            try:
+                pdftext = text.tree.xpath("//*[re:test(text(), '"+str(regex.pattern)+"')]", namespaces={"re": "http://exslt.org/regular-expressions"})
+                for match in pdftext:
+                    self.check_text_regexs(match.text, regexs, '')
+            except:
+                pass
 
     def check_access_regexs(self, dbfile, dbtype, regexs):
         """Uses regular expressions to check for PANs in Access MDB files"""
@@ -243,15 +248,15 @@ def set_global_parameters():
 
 def hunt_pans(gauge_update_function=None):
 
-    global search_dir, excluded_directories, search_extensions
+    global search_dir, excluded_directories, search_extensions, enable_pdf
 
     # find all files to check
-    all_files = filehunt.find_all_files_in_directory(PANFile, search_dir, excluded_directories, search_extensions, gauge_update_function)
+    all_files = filehunt.find_all_files_in_directory(PANFile, search_dir, excluded_directories, search_extensions, enable_pdf, gauge_update_function)
 
     # check each file
-    total_docs, doc_pans_found = filehunt.find_all_regexs_in_files([afile for afile in all_files if not afile.errors and afile.type in ('TEXT','ZIP','SPECIAL')], pan_regexs, search_extensions, 'PAN', gauge_update_function)
+    total_docs, doc_pans_found = filehunt.find_all_regexs_in_files([afile for afile in all_files if not afile.errors and afile.type in ('TEXT','ZIP','SPECIAL')], pan_regexs, search_extensions, enable_pdf, 'PAN', gauge_update_function)
     # check each pst message and attachment
-    total_psts, pst_pans_found = filehunt.find_all_regexs_in_psts([afile for afile in all_files if not afile.errors and afile.type == 'MAIL'], pan_regexs, search_extensions, 'PAN', gauge_update_function)
+    total_psts, pst_pans_found = filehunt.find_all_regexs_in_psts([afile for afile in all_files if not afile.errors and afile.type == 'MAIL'], pan_regexs, search_extensions, enable_pdf, 'PAN', gauge_update_function)
 
     total_files_searched = total_docs + total_psts
     pans_found = doc_pans_found + pst_pans_found
@@ -272,7 +277,7 @@ def hunt_pans(gauge_update_function=None):
 if __name__ == "__main__":
 
     colorama.init()
-  
+
     # Command Line Arguments
     arg_parser = argparse.ArgumentParser(prog='panhunt', description='PAN Hunt v%s: search directories and sub directories for documents containing PANs.' % (app_version), formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     arg_parser.add_argument('-s', dest='search', default=search_dir, help='base directory to search in')
@@ -282,6 +287,7 @@ if __name__ == "__main__":
     arg_parser.add_argument('-e', dest='specialfiles', default=special_extensions_string, help='special file extensions to search')
     arg_parser.add_argument('-m', dest='mailfiles', default=mail_extensions_string, help='email file extensions to search')
     arg_parser.add_argument('-l', dest='otherfiles', default=other_extensions_string, help='other file extensions to list')
+    arg_parser.add_argument('-pdf', dest='pdffiles', action='store_true', default=False, help='enable support for scanning PDF files - this will crash PANHunt with memory errors if large quantities of PDFs are found or in certain types of PDFs')
     arg_parser.add_argument('-o', dest='outfile', default=output_file, help='output file name for PAN report')
     arg_parser.add_argument('-u', dest='unmask', action='store_true', default=False, help='unmask PANs in output')
     arg_parser.add_argument('-c', dest='checkfilehash', help=argparse.SUPPRESS) # hidden argument
@@ -301,7 +307,8 @@ if __name__ == "__main__":
     mail_extensions_string = unicode(args.mailfiles)
     other_extensions_string = unicode(args.otherfiles)
     mask_pans = not args.unmask
-    
+    enable_pdf = args.pdffiles
+
     set_global_parameters()
 
     total_files_searched, pans_found, all_files = hunt_pans()

@@ -79,7 +79,7 @@ class AFile:
         self.errors.append(error_msg)
         print colorama.Fore.RED + unicode2ascii(u'ERROR %s on %s' % (error_msg, self.path)) + colorama.Fore.WHITE
 
-    def check_regexs(self, regexs, search_extensions):
+    def check_regexs(self, regexs, search_extensions, enable_pdf):
         """Checks the file for matching regular expressions: if a ZIP then each file in the ZIP (recursively) or the text in a document"""
 
         if self.type == 'ZIP':
@@ -90,7 +90,7 @@ class AFile:
                     
                 if zipfile.is_zipfile(self.path):
                     zf = zipfile.ZipFile(self.path)
-                    self.check_zip_regexs(zf, regexs, search_extensions, '')                                             
+                    self.check_zip_regexs(zf, regexs, search_extensions, enable_pdf, '')                                             
                 else:
                     self.set_error('Invalid ZIP file')
             except IOError:
@@ -114,7 +114,7 @@ class AFile:
                 try:
                     msg = msmsg.MSMSG(self.path)
                     if msg.validMSG:
-                        self.check_msg_regexs(msg, regexs, search_extensions, '')
+                        self.check_msg_regexs(msg, regexs, search_extensions, enable_pdf, '')
                     else:
                         self.set_error('Invalid MSG file')
                     msg.close()
@@ -122,13 +122,14 @@ class AFile:
                     self.set_error(sys.exc_info()[1])
                 except:
                     self.set_error(sys.exc_info()[1])
-            if get_ext(self.path) == '.pdf':
-                try:
-                    pdf = pdfquery.PDFQuery(self.path)
-                    pdf.load()
-                    self.check_pdf_regexs(pdf, regexs, '')
-                except:
-                    self.set_error(sys.exc_info()[1])
+            if enable_pdf:
+                if get_ext(self.path) == '.pdf':
+                    try:
+                        pdf = pdfquery.PDFQuery(self.path)
+                        pdf.load()
+                        self.check_pdf_regexs(pdf, regexs, '')
+                    except:
+                        self.set_error(sys.exc_info()[1])
             if get_ext(self.path) == '.mdb':
                 try:
                     self.check_access_regexs(self.path, 'mdb', regexs)
@@ -137,7 +138,7 @@ class AFile:
                 
         return self.matches
 
-    def check_pst_regexs(self, regexs, search_extensions, hunt_type, gauge_update_function=None):
+    def check_pst_regexs(self, regexs, search_extensions, enable_pdf, hunt_type, gauge_update_function=None):
         """ Searches a pst file for regular expressions in messages and attachments using regular expressions"""
 
         all_extensions = search_extensions['TEXT'] + search_extensions['ZIP'] + search_extensions['SPECIAL']
@@ -168,7 +169,7 @@ class AFile:
                         for subattachment in message.subattachments:
                             if get_ext(subattachment.Filename) in search_extensions['TEXT']+search_extensions['ZIP']:
                                 attachment = message.get_attachment(subattachment)
-                                self.check_attachment_regexs(attachment, regexs, search_extensions, message_path)
+                                self.check_attachment_regexs(attachment, regexs, search_extensions, enable_pdf, message_path)
                             items_completed += 1
                     items_completed += 1
                     if not gauge_update_function:
@@ -190,7 +191,7 @@ class AFile:
         return self.matches
 
 
-    def check_attachment_regexs(self, attachment, regexs, search_extensions, sub_path):
+    def check_attachment_regexs(self, attachment, regexs, search_extensions, enable_pdf, sub_path):
         """for PST and MSG attachments, check attachment for valid extension and then regexs"""
 
         attachment_ext = get_ext(attachment.Filename)
@@ -204,21 +205,21 @@ class AFile:
                     memory_zip = cStringIO.StringIO()
                     memory_zip.write(attachment.data)
                     zf = zipfile.ZipFile(memory_zip)
-                    self.check_zip_regexs(zf, regexs, search_extensions, os.path.join(sub_path, attachment.Filename))
+                    self.check_zip_regexs(zf, regexs, search_extensions, enable_pdf, os.path.join(sub_path, attachment.Filename))
                     memory_zip.close()
                 except: #RuntimeError: # e.g. zip needs password
                     self.set_error(sys.exc_info()[1])
 
-    def check_msg_regexs(self, msg, regexs, search_extensions, sub_path):
+    def check_msg_regexs(self, msg, regexs, search_extensions, enable_pdf, sub_path):
 
         if msg.Body:
             self.check_text_regexs(msg.Body, regexs, sub_path)
         if msg.attachments:
             for attachment in msg.attachments:
-                self.check_attachment_regexs(attachment, regexs, search_extensions, sub_path)
+                self.check_attachment_regexs(attachment, regexs, search_extensions, enable_pdf, sub_path)
 
 
-    def check_zip_regexs(self, zf, regexs, search_extensions, sub_path):
+    def check_zip_regexs(self, zf, regexs, search_extensions, enable_pdf, sub_path):
         """Checks a zip file for valid documents that are then checked for regexs"""
 
         all_extensions = search_extensions['TEXT'] + search_extensions['ZIP'] + search_extensions['SPECIAL']
@@ -230,7 +231,7 @@ class AFile:
                     memory_zip = cStringIO.StringIO()
                     memory_zip.write(zf.open(file_in_zip).read())
                     nested_zf = zipfile.ZipFile(memory_zip)                    
-                    self.check_zip_regexs(nested_zf, regexs, search_extensions, os.path.join(sub_path, decode_zip_filename(file_in_zip)))
+                    self.check_zip_regexs(nested_zf, regexs, search_extensions, enable_pdf, os.path.join(sub_path, decode_zip_filename(file_in_zip)))
                     memory_zip.close()
                 except: #RuntimeError: # e.g. zip needs password
                     self.set_error(sys.exc_info()[1])
@@ -247,7 +248,7 @@ class AFile:
                         memory_msg.write(zf.open(file_in_zip).read())
                         msg = msmsg.MSMSG(memory_msg)
                         if msg.validMSG:
-                            self.check_msg_regexs(msg, regexs, search_extensions, os.path.join(sub_path, decode_zip_filename(file_in_zip)))
+                            self.check_msg_regexs(msg, regexs, search_extensions, enable_pdf, os.path.join(sub_path, decode_zip_filename(file_in_zip)))
                         memory_msg.close()
                 except: #RuntimeError
                     self.set_error(sys.exc_info()[1])
@@ -263,7 +264,7 @@ class AFile:
 ###################################################################################################################################          
 
 
-def find_all_files_in_directory(AFileClass, root_dir, excluded_directories, search_extensions, gauge_update_function=None):
+def find_all_files_in_directory(AFileClass, root_dir, excluded_directories, search_extensions, enable_pdf, gauge_update_function=None):
     """Recursively searches a directory for files. search_extensions is a dictionary of extension lists"""
     
     global TEXT_FILE_SIZE_LIMIT
@@ -324,7 +325,7 @@ def find_all_files_in_directory(AFileClass, root_dir, excluded_directories, sear
 
 
 
-def find_all_regexs_in_files(text_or_zip_files, regexs, search_extensions, hunt_type, gauge_update_function=None):
+def find_all_regexs_in_files(text_or_zip_files, regexs, search_extensions, enable_pdf, hunt_type, gauge_update_function=None):
     """ Searches files in doc_files list for regular expressions"""
 
     if not gauge_update_function:
@@ -338,7 +339,7 @@ def find_all_regexs_in_files(text_or_zip_files, regexs, search_extensions, hunt_
     matches_found = 0
 
     for afile in text_or_zip_files:
-        matches = afile.check_regexs(regexs, search_extensions)
+        matches = afile.check_regexs(regexs, search_extensions, enable_pdf)
         matches_found += len(matches)
         files_completed += 1
         if not gauge_update_function:
@@ -353,7 +354,7 @@ def find_all_regexs_in_files(text_or_zip_files, regexs, search_extensions, hunt_
     return total_files, matches_found
 
 
-def find_all_regexs_in_psts(pst_files, regexs, search_extensions, hunt_type, gauge_update_function=None):
+def find_all_regexs_in_psts(pst_files, regexs, search_extensions, enable_pdf, hunt_type, gauge_update_function=None):
     """ Searches psts in pst_files list for regular expressions in messages and attachments"""
 
     total_psts = len(pst_files)
@@ -361,7 +362,7 @@ def find_all_regexs_in_psts(pst_files, regexs, search_extensions, hunt_type, gau
     matches_found = 0
 
     for afile in pst_files:
-        matches = afile.check_pst_regexs(regexs, search_extensions, hunt_type, gauge_update_function)
+        matches = afile.check_pst_regexs(regexs, search_extensions, enable_pdf, hunt_type, gauge_update_function)
         matches_found += len(matches)
         psts_completed += 1
 
