@@ -170,7 +170,7 @@ class AFile:
                             for subattachment in message.subattachments:
                                 if get_ext(subattachment.Filename) in search_extensions['TEXT']+search_extensions['ZIP']:
                                     attachment = message.get_attachment(subattachment)
-                                    self.check_attachment_regexs(attachment, regexs, search_extensions, message_path)
+                                    self.check_attachment_regexs(attachment, regexs, search_extensions, enable_pdf, message_path)
                                 items_completed += 1
                         items_completed += 1
                         if not gauge_update_function:
