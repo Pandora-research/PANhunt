@@ -24,8 +24,10 @@ zip_extensions_string = u'.docx,.xlsx,.zip'
 special_extensions_string = u'.msg,.pdf,.mdb'
 mail_extensions_string = u'.pst'
 other_extensions_string = u'.ost,.accdb' # checks for existence of files that can't be checked automatically
+excluded_pans_string = u'378282246310005,371449635398431,378734493671000,5610591081018250,30569309025904,38520000023237,6011111111111110,6011000990139420,3530111333300000,3566002020360500,5555555555554440,5105105105105100,4111111111111110,4012888888881880,4222222222222,76009244561,5019717010103740,6331101999990010'
 
 excluded_directories = None
+excluded_pans = []
 search_extensions = {}
 enable_pdf = False
 
@@ -63,7 +65,7 @@ class PANFile(filehunt.AFile):
             pans = regex.findall(text)
             if pans:
                 for pan in pans:
-                    if PAN.is_valid_luhn_checksum(pan):
+                    if PAN.is_valid_luhn_checksum(pan) and not PAN.is_excluded(pan):
                         self.matches.append(PAN(self.path, sub_path, brand, pan))
 
     def check_pdf_regexs(self, text, regexs, sub_path):
@@ -132,6 +134,14 @@ class PAN:
     def get_masked_pan(self):
         return self.pan[0:7] + re.sub('\d','*',self.pan[7:-4]) + self.pan[-4:]
 
+    @staticmethod
+    def is_excluded(pan):
+        global excluded_pans
+        
+        for excluded_pan in excluded_pans:
+            if pan == excluded_pan:
+                return True
+        return False
 
     @staticmethod
     def is_valid_luhn_checksum(pan):
@@ -236,7 +246,7 @@ def output_report(search_dir, excluded_directories_string, all_files, total_file
 
 def set_global_parameters():
 
-    global excluded_directories_string, text_extensions_string, zip_extensions_string, special_extensions_string, mail_extensions_string, other_extensions_string, excluded_directories, search_extensions
+    global excluded_directories_string, text_extensions_string, zip_extensions_string, special_extensions_string, mail_extensions_string, other_extensions_string, excluded_directories, search_extensions, excluded_pans_string, excluded_pans
 
     excluded_directories = [exc_dir.lower() for exc_dir in excluded_directories_string.split(',')]    
     search_extensions['TEXT'] = text_extensions_string.split(',')
@@ -244,7 +254,8 @@ def set_global_parameters():
     search_extensions['SPECIAL'] = special_extensions_string.split(',')
     search_extensions['MAIL'] = mail_extensions_string.split(',')
     search_extensions['OTHER'] = other_extensions_string.split(',')
-
+    if len(excluded_pans_string) > 0:
+        excluded_pans = excluded_pans_string.split(',')
 
 def hunt_pans(gauge_update_function=None):
 
@@ -291,6 +302,7 @@ if __name__ == "__main__":
     arg_parser.add_argument('-o', dest='outfile', default=output_file, help='output file name for PAN report')
     arg_parser.add_argument('-u', dest='unmask', action='store_true', default=False, help='unmask PANs in output')
     arg_parser.add_argument('-c', dest='checkfilehash', help=argparse.SUPPRESS) # hidden argument
+    arg_parser.add_argument('-X', dest='excludepan', default=excluded_pans_string, help='PAN to exclude from search')
 
     args = arg_parser.parse_args()    
     
@@ -308,6 +320,7 @@ if __name__ == "__main__":
     other_extensions_string = unicode(args.otherfiles)
     mask_pans = not args.unmask
     enable_pdf = args.pdffiles
+    excluded_pans_string = unicode(args.excludepan)
 
     set_global_parameters()
 

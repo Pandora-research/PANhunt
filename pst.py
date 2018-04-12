@@ -266,19 +266,16 @@ class Block:
         239, 53, 156, 132, 43, 21, 213, 119, 52, 73, 182, 18, 10, 127, 113, 136, 253, 157, 24, 65, 125, 147, 216, 88, 44, 206, 254, 36, 175, 222, 184, 54, 
         200, 161, 128, 166, 153, 152, 168, 47, 14, 129, 101, 115, 228, 194, 162, 138, 212, 225, 17, 208, 8, 139, 42, 242, 237, 154, 100, 63, 193, 108, 249, 236)
 
+    if sys.hexversion >= 0x03000000:
+        decrypt_table = bytes.maketrans(bytearray(range(256)), bytearray(mpbbCryptFrom512))
+    else:
+        decrypt_table = string.maketrans(b''.join(map(chr, range(256))), b''.join(map(chr, mpbbCryptFrom512)))
+
     btypeData = 0
     btypeXBLOCK = 1
     btypeXXBLOCK = 2
     btypeSLBLOCK = 3
     btypeSIBLOCK = 4
-
-    def decode_permute(self, pv, cb):
-        """ NDB_CRYPT_PERMUTE: pv is byte array, cb is data length to decode"""
-
-        temp = 0
-        for pvIndex in range(cb):
-            pv[pvIndex] = Block.mpbbCryptFrom512[pv[pvIndex]] # Block.mpbbCrypt[pv[pvIndex] + 512]
-        return str(pv)
 
 
     def __init__(self, bytes, offset, data_size, is_ansi, bid_check, bCryptMethod):
@@ -311,7 +308,7 @@ class Block:
             self.btype = 0
             self.cLevel = 0
             if bCryptMethod == 1: #NDB_CRYPT_PERMUTE
-                self.data = self.decode_permute(bytearray(bytes[:data_size]), data_size)
+                self.data = bytes[:data_size].translate(Block.decrypt_table)
             else: # no data encoding
                 self.data = bytes[:data_size] # data block
 
@@ -374,9 +371,9 @@ class NBD:
         
     def fetch_block(self, bid):
 
-        if bid.bid in self.bbt_entries.keys():
+        try:
             bbt_entry = self.bbt_entries[bid.bid]
-        else:
+        except KeyError:
             raise PSTException('Invalid BBTEntry: %s' % bid)
         offset = bbt_entry.BREF.ib
         data_size = bbt_entry.cb
@@ -568,6 +565,7 @@ class BTH:
                 bth_working_stack = bth_record_list
                 while bth_working_stack:
                     bth_intermediate = bth_working_stack.pop()
+                    bytes = hn.get_hid_data(bth_intermediate.hidNextLevel)
                     bth_record_list = self.get_bth_records(bytes, bth_intermediate.bIdxLevel - 1)
                     if bth_intermediate.bIdxLevel - 1 == 0: # leafs
                         self.bth_datas.extend(bth_record_list)
@@ -756,7 +754,7 @@ class PType:
         elif self.ptype == PTypeEnum.PtypNull:
             return None
         elif self.ptype == PTypeEnum.PtypObject:
-            return bytes
+            return bytes[:4]
         else:
             raise PSTException('Invalid PTypeEnum for value %s ' % self.ptype)
 
@@ -774,13 +772,9 @@ class PType:
     def get_multi_value_offsets(self, bytes):
 
         ulCount = struct.unpack('I', bytes[:4])[0]
-        if ulCount == 1:
-            rgulDataOffsets = [8] # not documented, but seems as if a single length multi only has a 4 byte ULONG with the offset. Boo!
-        else:
-            rgulDataOffsets = [struct.unpack('Q', bytes[4+i*8:4+(i+1)*8])[0] for i in range(ulCount)]
+        rgulDataOffsets = [struct.unpack('I', bytes[(i+1)*4:(i+2)*4])[0] for i in range(ulCount)]
         rgulDataOffsets.append(len(bytes))
         return ulCount, rgulDataOffsets
-
 
 
 class PropIdEnum:
@@ -1110,7 +1104,7 @@ class LTP:
             PTypeEnum.PtypMultipleBinary:PType(PTypeEnum.PtypMultipleBinary, 2, False, True), 
             PTypeEnum.PtypUnspecified:PType(PTypeEnum.PtypUnspecified, 0, False, False), 
             PTypeEnum.PtypNull:PType(PTypeEnum.PtypNull, 0, False, False), 
-            PTypeEnum.PtypObject:PType(PTypeEnum.PtypObject, 0, False, False)
+            PTypeEnum.PtypObject:PType(PTypeEnum.PtypObject, 4, False, True)
         }
 
 
@@ -1211,7 +1205,7 @@ class Folder:
         self.DisplayName = self.pc.getval(PropIdEnum.PidTagDisplayName)
         self.path = parent_path+'\\'+self.DisplayName
             
-        #print 'FOLDER DEBUG', self.DisplayName, self.pc
+        #print('FOLDER DEBUG', self.DisplayName, self.pc)
 
         self.ContentCount = self.pc.getval(PropIdEnum.PidTagContentCount)
         self.ContainerClass = self.pc.getval(PropIdEnum.PidTagContainerClass)
@@ -1302,12 +1296,20 @@ class Message:
     afStorage = 0x06
 
 
-    def __init__(self, nid, ltp):
+    def __init__(self, nid, ltp, nbd=None, parent_message=None):
 
-        if nid.nidType != NID.NID_TYPE_NORMAL_MESSAGE:
-            raise PSTException('Invalid Message NID Type: %s' % nid_pc.nidType)
         self.ltp = ltp
-        self.pc = ltp.get_pc_by_nid(nid)
+
+        if parent_message:
+            subnode = parent_message.pc.hn.subnodes[nid]
+            datas = nbd.fetch_all_block_data(subnode.bidData)
+            hn = HN(subnode, ltp, datas)
+            self.pc = PC(hn)
+        else:
+            if nid.nidType != NID.NID_TYPE_NORMAL_MESSAGE:
+                raise PSTException('Invalid Message NID Type: %s' % nid_pc.nidType)
+            self.pc = ltp.get_pc_by_nid(nid)
+
         self.MessageClass = self.pc.getval(PropIdEnum.PidTagMessageClassW)
         self.Subject = ltp.strip_SubjectPrefix(self.pc.getval(PropIdEnum.PidTagSubjectW))
         self.ClientSubmitTime = self.pc.getval(PropIdEnum.PidTagClientSubmitTime)
@@ -1450,6 +1452,14 @@ class Messaging:
             if nameid.N == 1:
                 name_len = struct.unpack('I', nameid_stringstream[nameid.dwPropertyID:nameid.dwPropertyID+4])[0]
                 nameid.name = nameid_stringstream[nameid.dwPropertyID+4:nameid.dwPropertyID+4+name_len].decode('utf-16-le') # unicode
+            if nameid.wGuid == 0:
+                nameid.guid = None
+            elif nameid.wGuid == 1: # PS_MAPI
+               nameid.guid = '(\x03\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00F'
+            elif nameid.wGuid == 2: # PS_PUBLIC_STRINGS
+                nameid.guid = ')\x03\x02\x00\x00\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x00F'
+            else:
+                nameid.guid = nameid_guidstream[16*(nameid.wGuid-3):16*(nameid.wGuid-2)]
 
 
     def get_folder(self, entryid, parent_path=''):
@@ -1776,7 +1786,13 @@ class Header:
         self.dwMagic = fd.read(FieldSize.DWORD)
         self.dwCRCPartial = fd.read(FieldSize.DWORD) # ignore
         self.wMagicClient = fd.read(FieldSize.WORD)
-        self.wVer, self.wVerClient, self.bPlatformCreate, self.bPlatformAccess = struct.unpack('HHBB',fd.read(FieldSize.WORD+FieldSize.WORD+FieldSize.BYTE+FieldSize.BYTE))
+
+        try:
+            self.wVer, self.wVerClient, self.bPlatformCreate, self.bPlatformAccess = struct.unpack('HHBB',fd.read(FieldSize.WORD+FieldSize.WORD+FieldSize.BYTE+FieldSize.BYTE))
+        except struct.error:
+            self.validPST = False
+            return
+
         self.dwReserved1 = fd.read(FieldSize.DWORD) # ignore
         self.dwReserved2 = fd.read(FieldSize.DWORD) # ignore
 
@@ -2076,9 +2092,9 @@ def log_error(e):
 def test_status_pst(pst_filepath):
 
     pst = PST(pst_filepath)
-    print unicode2ascii(pst.get_pst_status())
-    print 'Total Messages: %s' % pst.get_total_message_count()
-    print 'Total Attachments: %s' % pst.get_total_attachment_count()
+    print(unicode2ascii(pst.get_pst_status()))
+    print('Total Messages: %s' % pst.get_total_message_count())
+    print('Total Attachments: %s' % pst.get_total_attachment_count())
     pst.close()
 
 
@@ -2093,7 +2109,7 @@ def test_dump_pst(pst_filepath, output_path):
     """ dump out all PST email attachments and emails (into text files) to output_path folder"""
 
     pst = PST(pst_filepath)
-    print pst.get_pst_status()
+    print(pst.get_pst_status())
 
     pbar = get_simple_progressbar('Messages: ')
     total_messages = pst.get_total_message_count()
@@ -2119,7 +2135,7 @@ def test_folder_psts(psts_folder):
             error_log_list = []
             pst = PST(pst_filepath)
             status = unicode2ascii(pst.get_pst_status())
-            print status
+            print(status)
             password = ''
             if pst.messaging.PasswordCRC32Hash:
                 password = pst.crack_password(pst.messaging.PasswordCRC32Hash)
@@ -2158,11 +2174,11 @@ if __name__=="__main__":
         output_folder = args.output_folder
 
         if not os.path.exists(input_pst_file):
-            print 'Input PST file does not exist'
+            print('Input PST file does not exist')
             sys.exit(1)
 
         if not os.path.exists(output_folder):
-            print 'Output folder does not exist'
+            print('Output folder does not exist')
             sys.exit(1)
 
         test_dump_pst(input_pst_file,output_folder)
